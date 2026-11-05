@@ -331,3 +331,17 @@ th.today,td.today{background:var(--blush-soft)}
 .picker{border:0;border-radius:18px;box-shadow:var(--shadow),0 0 0 1px var(--line)}
 .mbody input[type=text],.goal select,.hform input,.mbody input[type=time]{border-radius:12px}
 .hsub:has(b:empty),.hsub:empty{display:none}
+
+/* 쉬는 습관 팝업 (5일 연속 못 했을 때) */
+.restpop{width:min(440px,calc(100% - 32px));box-sizing:border-box;border:0;border-radius:20px;padding:20px 18px 16px;background:var(--surface);color:var(--ink);box-shadow:0 18px 50px rgba(20,25,35,.28);animation:drop .35s cubic-bezier(.2,.9,.3,1.2)}
+.restpop::backdrop{background:rgba(20,25,40,.38)}
+.rphead{display:flex;gap:12px;align-items:flex-start;margin-bottom:14px}
+.rpic{font-size:30px;line-height:1}
+.rphead b{display:block;font-size:18px;line-height:1.35}
+.rphead p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.rprow{border-top:1px solid var(--line);padding:12px 0;display:grid;gap:10px}
+.rpname{display:flex;gap:10px;align-items:center}
+.rpname small{display:block;color:var(--muted);font-size:13px}
+.rpacts{display:flex;gap:6px;flex-wrap:wrap}
+.rpfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.notibtn{margin-left:8px;padding:2px 10px;font-size:13px}

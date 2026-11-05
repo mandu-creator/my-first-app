@@ -148,7 +148,7 @@ function render(){
   var diff=Math.round((view-thisMon)/6048e5),wk=ymd(view);
   var tag=diff===0?'이번 주':diff===-1?'지난주':diff===1?'다음 주':'';
   var yr=view.getFullYear()!==now.getFullYear()?view.getFullYear()+'년 ':'';
-  var h='<header><h1>도장 해빗 트래커</h1><p class="sub"><span class="status" id="status"></span></p></header>';
+  var h='<header><h1>도장 해빗 트래커</h1><p class="sub"><span class="status" id="status"></span>'+notiBtn()+'</p></header>';
   h+=tabbar();
   if(tab==='today'){
   h+=renderHero()+renderNudge();
@@ -273,11 +273,12 @@ function restNeed(hb){return Math.max(2,Math.ceil(7/(hb.goal||1)))}
 function prevOn(id,k){var b=null;Object.keys(state.checks).forEach(function(x){if(x<k&&isOn(x,id)&&(!b||x>b))b=x});return b}
 function restInfo(hb,k){var p=prevOn(hb.id,k),c=hb.created||k,base=p?dn(p):dn(c)-1;return {n:Math.max(0,dn(k)-base-1),first:!p}}
 function isBack(k,id){var hb=findHabit(id);if(!hb||hb.kind==='count'||!isOn(k,id))return false;return restInfo(hb,k).n>=restNeed(hb)}
-function isResting(hb){if(hb.kind==='count'||isOn(todayKey,hb.id)||(hb.created||todayKey)>todayKey)return false;if((state.rest[todayKey]||[]).indexOf(hb.id)>=0)return false;return restInfo(hb,todayKey).n>=restNeed(hb)}
+var REST_DAYS=5; // 이 일수 이상 연속으로 못 하면 '쉬고 있는 습관'으로 보고 더 작게 다시 계획하자고 제안
+function isResting(hb){if(hb.kind==='count'||isOn(todayKey,hb.id)||(hb.created||todayKey)>todayKey)return false;if((state.rest[todayKey]||[]).indexOf(hb.id)>=0)return false;return restInfo(hb,todayKey).n>=REST_DAYS}
 function shrinkMini(t){
   t=String(t||'').trim();if(!t)return '';
   var m=t.match(/(\d+)\s*분/);if(m)return +m[1]>1?t.replace(m[0],'1분'):t.replace(m[0],'30초');
-  m=t.match(/(\d+)\s*(개|쪽|페이지|번|회|문제|줄|장)/);if(m&&+m[1]>1)return t.replace(m[0],'1'+m[2]);
+  m=t.match(/(\d+)\s*(개|쪽|페이지|번|회|문제|줄|장|컵|잔)/);if(m&&+m[1]>1)return t.replace(m[0],'1'+m[2]);
   if(/만 해도 OK$/.test(t))return '';
   return (t+'만 해도 OK').slice(0,30);
 }
@@ -523,6 +524,68 @@ document.addEventListener('mouseout',function(e){var c=e.target.closest&&e.targe
 document.addEventListener('focusin',function(e){if(e.target.classList&&e.target.classList.contains('col'))readout(e.target)});
 document.addEventListener('toggle',function(e){if(e.target.id==='manage')lsSet('ht-manage',e.target.open?'1':'0')},true);
 
+/* ── 쉬는 습관 팝업 & 알림 ─────────────────────────────
+   - 습관을 REST_DAYS(5)일 연속 못 하면, 하루에 한 번 팝업으로 '더 작게 다시 계획하기'를 제안
+   - 브라우저 알림 권한을 허용하면, 앱이 열려 있는 동안 팝업·확인 시간 알림을 함께 보냄
+   - 앱을 완전히 닫은 상태의 알림은 푸시 서버가 필요해 지원하지 않음 */
+function canNotify(){return 'Notification' in window}
+function notiBtn(){
+  if(!canNotify()||Notification.permission!=='default')return '';
+  if(!state.habits.some(function(hb){return hb.time||isResting(hb)}))return '';
+  return '<button type="button" class="btn sm notibtn" data-noti="1">🔔 알림 켜기</button>';
+}
+function notify(title,body,tag){
+  if(!canNotify()||Notification.permission!=='granted')return;
+  try{var n=new Notification(title,{body:body,tag:tag});n.onclick=function(){window.focus();n.close()}}
+  catch(e){ // 일부 모바일 브라우저는 서비스 워커를 통해서만 알림을 띄울 수 있음
+    if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(function(r){r.showNotification(title,{body:body,tag:tag})}).catch(function(){});
+  }
+}
+function notified(key){var o={};try{o=JSON.parse(lsGet('ht-notified')||'{}')}catch(e){}if(o.d!==todayKey)o={d:todayKey,k:[]};if(o.k.indexOf(key)>=0)return true;o.k.push(key);lsSet('ht-notified',JSON.stringify(o));return false}
+function restActs(hb){
+  var cur=hb.mini||suggestMini(hb.name),sm=hb.mode==='mini'?shrinkMini(cur):'',g=hb.goal>1?Math.max(1,Math.ceil(hb.goal/2)):0;
+  return (isTimer(hb)?'<button type="button" class="btn sm primary" data-go="'+hb.id+'">▶ 5분만 해 보기</button>':'<button type="button" class="btn sm primary" data-quick="'+hb.id+'|mini">오늘 최소로 한 번만</button>')
+    +(sm&&sm!==cur?'<button type="button" class="btn sm" data-setmini="'+hb.id+'|'+esc(sm)+'">더 작게: '+esc(sm)+'</button>':'')
+    +(g&&g<hb.goal?'<button type="button" class="btn sm" data-setgoal="'+hb.id+'|'+g+'">목표 주 '+hb.goal+'일 → '+g+'일</button>':'')
+    +'<button type="button" class="btn sm link" data-rest="'+hb.id+'">오늘은 쉴게요</button>';
+}
+function closeRestPop(){var d=document.getElementById('restpop');if(d){if(d.open&&d.close)d.close();d.remove()}}
+function openRestPop(rs){
+  closeRestPop();
+  var d=document.createElement('dialog');d.id='restpop';d.className='restpop';d.setAttribute('aria-labelledby','restpop-h');
+  var h='<div class="rphead"><span class="rpic" aria-hidden="true">🌱</span><div><b id="restpop-h">더 작게 다시 시작해 볼까요?</b>'
+    +'<p>며칠 쉬었어도 괜찮아요. 부담을 줄여서 다시 이어가 봐요.</p></div></div>';
+  rs.forEach(function(hb){
+    var r=restInfo(hb,todayKey);
+    h+='<div class="rprow" style="--c:'+hb.color+'"><div class="rpname"><i class="hic" aria-hidden="true">'+esc(hb.emoji||hb.name.charAt(0))+'</i><span><b>'+esc(hb.name)+'</b><small>'+(r.first?'아직 첫 도장 전이에요':r.n+'일 쉬었어요')+'</small></span></div>'
+      +'<div class="rpacts">'+restActs(hb)+'</div></div>';
+  });
+  h+='<div class="rpfoot">'+(canNotify()&&Notification.permission==='default'?'<button type="button" class="btn sm" data-noti="1">🔔 알림도 받을래요</button>':'<span></span>')
+    +'<button type="button" class="btn sm" data-rpclose="1">나중에 할게요</button></div>';
+  d.innerHTML=h;document.body.appendChild(d);
+  d.addEventListener('click',function(e){
+    if(e.target===d){closeRestPop();return} // 바깥(배경) 클릭 시 닫기
+    var b=e.target.closest&&e.target.closest('[data-rpclose],[data-quick],[data-go],[data-setmini],[data-setgoal],[data-rest]');
+    if(b)setTimeout(closeRestPop,0); // 버튼 동작은 기존 클릭 처리기가 수행한 뒤 팝업만 닫음
+  });
+  d.addEventListener('close',function(){setTimeout(closeRestPop,0)});
+  if(d.showModal)d.showModal();else d.setAttribute('open','');
+  var f=d.querySelector('.rpacts .btn');if(f)f.focus();
+}
+function checkAlerts(){
+  var rs=ordered().filter(isResting);
+  if(rs.length&&lsGet('ht-restpop')!==todayKey&&!tmr&&!pick){
+    lsSet('ht-restpop',todayKey);openRestPop(rs);
+    if(!notified('rest'))notify('더 작게 다시 시작해 볼까요?',rs.map(function(hb){return hb.name}).join(', ')+' · 며칠 쉬었어도 괜찮아요','rest');
+  }
+  ordered().filter(isDue).forEach(function(hb){if(!notified('due-'+hb.id))notify('⏰ '+hb.name,'확인할 시간이에요 ('+hb.time+')','due-'+hb.id)});
+}
+document.addEventListener('click',function(e){
+  var nb=e.target.closest&&e.target.closest('[data-noti]');if(!nb||!canNotify())return;
+  Notification.requestPermission().then(function(){render();var d=document.querySelector('#restpop [data-noti]');if(d)d.replaceWith(document.createElement('span'));checkAlerts()});
+});
+setInterval(checkAlerts,30000);
+
 render();
 setInterval(function(){var n2=new Date(),k2=ymd(n2);if(k2!==todayKey){var wasThis=+view===+thisMon;now=n2;todayKey=k2;thisMon=mondayOf(n2);if(wasThis)view=thisMon;dueSig=''}if(dueKey()===dueSig)return;var ae=document.activeElement;if(pick||(ae&&ae.matches&&ae.matches('input,select,textarea')))return;render()},30000);
 (window.claude&&window.claude.use?window.claude.use('artifact'):Promise.resolve(null)).then(function(a){
@@ -530,8 +593,8 @@ setInterval(function(){var n2=new Date(),k2=ymd(n2);if(k2!==todayKey){var wasThi
   else{
     mode='local';
     var saved=lsGet('ht-state');
-    if(saved){try{state=JSON.parse(saved);normalize();render();return}catch(e){}}
+    if(saved){try{state=JSON.parse(saved);normalize();render();checkAlerts();return}catch(e){}}
   }
-  setStatus();
-}).catch(function(){mode='local';setStatus()});
+  setStatus();checkAlerts();
+}).catch(function(){mode='local';setStatus();checkAlerts()});
 })();
